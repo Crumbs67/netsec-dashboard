@@ -14,7 +14,62 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the live honeypot dashboard.
+
+The dashboard is fully powered by Next.js route handlers. No separate websocket or tailing process is required.
+
+## Honeypot Feed API
+
+The dashboard polls this endpoint every 3 seconds:
+
+- `GET /api/honeypot/events?limit=120`
+
+Filters are supported via query params:
+
+- `severity=high|medium|low`
+- `protocol=TCP|UDP`
+- `country=US` (ISO-like code)
+- `port=22`
+- `q=ssh` (matches IP/service/action)
+- `sinceMinutes=15`
+
+You can push real honeypot events into the dashboard:
+
+- `POST /api/honeypot/events`
+- `POST /api/honeypot/cowrie` (Cowrie JSON directly)
+
+Example payload:
+
+```json
+{
+	"srcIp": "185.22.44.10",
+	"country": "RU",
+	"protocol": "TCP",
+	"port": 22,
+	"service": "SSH",
+	"severity": "high",
+	"action": "Brute force burst",
+	"payloadSize": 512
+}
+```
+
+You may also send an array of events in one request.
+
+## Live stream
+
+The dashboard uses the Next.js streaming endpoint:
+
+- `GET /api/honeypot/stream`
+
+This powers live updates in the browser with Server-Sent Events.
+
+## Cowrie ingest
+
+Send Cowrie JSON directly to:
+
+- `POST /api/honeypot/cowrie`
+
+If you want to forward Cowrie logs, point your own log shipper at that route.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
