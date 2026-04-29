@@ -1,81 +1,38 @@
-import { getFeed, ingestEvents, type HoneypotEvent } from "@/lib/honeypot-feed";
-
-export const dynamic = "force-dynamic";
-
-const MAX_EVENTS = 2000;
-
-function applyFilters(events: HoneypotEvent[], searchParams: URLSearchParams): HoneypotEvent[] {
-  const severity = searchParams.get("severity");
-  const protocol = searchParams.get("protocol");
-  const country = searchParams.get("country");
-  const portParam = searchParams.get("port");
-  const query = searchParams.get("q")?.toLowerCase().trim();
-
-  const sinceMinutes = Number(searchParams.get("sinceMinutes") ?? "0");
-  const sinceCutoff =
-    Number.isFinite(sinceMinutes) && sinceMinutes > 0
-      ? Date.now() - sinceMinutes * 60 * 1000
-      : 0;
-
-  const port = Number(portParam);
-
-  return events.filter((event) => {
-    if (severity && event.severity !== severity) {
-      return false;
-    }
-
-    if (protocol && event.protocol !== protocol) {
-      return false;
-    }
-
-    if (country && country !== "ALL" && event.country !== country) {
-      return false;
-    }
-
-    if (portParam && Number.isFinite(port) && event.port !== port) {
-      return false;
-    }
-
-    if (sinceCutoff > 0 && new Date(event.timestamp).getTime() < sinceCutoff) {
-      return false;
-    }
-
-    if (query) {
-      const haystack = `${event.srcIp} ${event.service} ${event.action}`.toLowerCase();
-      if (!haystack.includes(query)) {
-        return false;
-      }
-    }
-
-    return true;
-  });
-}
+import { NextResponse } from 'next/server';
+import clientPromise from "@/lib/mongodb";
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const requestedLimit = Number(searchParams.get("limit") ?? "120");
-  const limit = Number.isFinite(requestedLimit)
-    ? Math.min(Math.max(requestedLimit, 1), MAX_EVENTS)
-    : 120;
-  const filtered = applyFilters(getFeed(MAX_EVENTS), searchParams).slice(0, limit);
+  try {
+    // Gunakan clientPromise yang sudah kita buat (Singleton)
+    const client = await clientPromise; 
+    const db = client.db("honeypot_db"); 
+    
+    // Ambil 120 log terbaru dari koleksi 'traffic'
+    const logs = await db.collection("traffic")
+      .find({})
+      .sort({ timestamp: -1 })
+      .limit(120)
+      .toArray();
+    // Mapping data
+    const formattedEvents = logs.map(doc => ({
+        id: doc._id.toString(),
+        timestamp: doc.timestamp,
+        srcIp: doc.srcIp,
+        country: doc.country,
+        protocol: doc.protocol,
+        port: doc.port,
+        service: doc.service,
+        severity: doc.severity,
+        action: doc.action,
+        payloadSize: doc.payloadSize || 0
+    }));
 
-  return Response.json(
-    {
-      generatedAt: new Date().toISOString(),
-      count: filtered.length,
-      events: filtered,
-    },
-    {
-      headers: {
-        "Cache-Control": "no-store, max-age=0",
-      },
-    },
-  );
-}
-
-export async function POST(request: Request) {
-  const payload = await request.json();
-  const normalized = ingestEvents(payload);
-
-  return Response.json({ accepted: normalized.length, ok: true });
+    return NextResponse.json({
+        generatedAt: new Date().toISOString(),
+        events: formattedEvents
+    });
+  } catch (e) {
+    console.error("Database error:", e);
+    return NextResponse.json({ error: 'Gagal ambil data' }, { status: 500 });
+  }
 }

@@ -110,16 +110,16 @@ function getInitialFilter(
   return searchParams.get(key) ?? fallback;
 }
 
-function getCountryName(code: string): string {
-  if (code === "UN") {
-    return "Unknown";
-  }
+function getCountryName(code: string | undefined) {
+  // Tambahkan baris ini untuk menangani data kosong/undefined
+  if (!code) return "Unknown"; 
 
+  // Sekarang aman untuk mengecek .length
   if (code.length === 2 && typeof Intl !== "undefined" && "DisplayNames" in Intl) {
-    const display = new Intl.DisplayNames(["en"], { type: "region" });
+    const display = new Intl.DisplayNames(['en'], { type: 'region' });
     return display.of(code) ?? code;
   }
-
+  
   return code;
 }
 
@@ -210,8 +210,7 @@ export function HoneypotDashboard() {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-
-  const [events, setEvents] = useState<HoneypotEvent[]>([]);
+const [events, setEvents] = useState<HoneypotEvent[]>([]); // <-- Tambahin []
   const [lastUpdate, setLastUpdate] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>("");
@@ -228,6 +227,29 @@ export function HoneypotDashboard() {
   const [mapFeatures, setMapFeatures] = useState<MapFeature[]>([]);
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
   const [threatTick, setThreatTick] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+  // Fungsi buat fetch data
+  const fetchData = async () => {
+    try {
+      const response = await fetch("/api/honeypot/events");
+      const data = await response.json();
+      setEvents(data.events); // Update state dengan data baru
+    } catch (error) {
+      console.error("Gagal update data:", error);
+    }
+    
+  };
+
+  // 1. Panggil sekali pas awal
+  fetchData();
+
+  // 2. Pasang interval supaya dia jalan terus setiap REFRESH_MS
+  const interval = setInterval(fetchData, REFRESH_MS);
+
+  // 3. Bersihkan interval pas komponen di-unmount (biar gak error memory leak)
+  return () => clearInterval(interval);
+}, []); // Dependency array kosong biar cuma jalan sekali pas pertama load
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -262,7 +284,7 @@ export function HoneypotDashboard() {
     };
 
     loadMap();
-
+    
     return () => {
       cancelled = true;
     };
@@ -404,7 +426,8 @@ export function HoneypotDashboard() {
           };
 
           setEvents((previous) => {
-            const withoutDuplicate = previous.filter((item) => item.id !== payload.event.id);
+            const currentEvents = previous || [];
+            const withoutDuplicate = currentEvents.filter((item) => item.id !== payload.event.id);
             return [payload.event, ...withoutDuplicate].slice(0, 800);
           });
           setLastUpdate(new Date().toISOString());
@@ -454,6 +477,9 @@ export function HoneypotDashboard() {
   }, []);
 
   const filteredEvents = useMemo(() => {
+    if (!events || !Array.isArray(events)) {
+    return [];
+  }
     const port = Number(portFilter);
     const now = Date.now();
     const minutes = Number(minutesFilter);
@@ -461,6 +487,7 @@ export function HoneypotDashboard() {
     const search = searchFilter.trim().toLowerCase();
 
     return events.filter((event) => {
+      if (!event) return false;
       if (severityFilter !== "ALL" && event.severity !== severityFilter) {
         return false;
       }
@@ -501,6 +528,9 @@ export function HoneypotDashboard() {
   ]);
 
   const countryOptions = useMemo(() => {
+    if (!events || !Array.isArray(events)) {
+    return [];
+  }
     return [...new Set(events.map((event) => event.country))].sort();
   }, [events]);
 
@@ -732,6 +762,7 @@ export function HoneypotDashboard() {
           <label className="flex flex-col gap-1 text-xs text-slate-300">
             Severity
             <select
+            suppressHydrationWarning={true}
               value={severityFilter}
               onChange={(event) => setSeverityFilter(event.target.value)}
               className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
@@ -763,12 +794,13 @@ export function HoneypotDashboard() {
               onChange={(event) => setCountryFilter(event.target.value)}
               className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
             >
-              <option value="ALL">All</option>
-              {countryOptions.map((country) => (
-                <option key={country} value={country}>
-                  {getCountryName(country)}
-                </option>
-              ))}
+   <option value="ALL">All</option>
+{/* Menggunakan [...new Set(countryOptions)] untuk menghilangkan duplikat */}
+{[...new Set(countryOptions)].map((country, index) => (
+  <option key={`${country}-${index}`} value={country}>
+    {getCountryName(country)}
+  </option>
+))}
             </select>
           </label>
 
@@ -849,7 +881,7 @@ export function HoneypotDashboard() {
                 const gradient = getRankBarGradient(index);
 
                 return (
-                  <div key={attacker.ip} className="space-y-1.5">
+                  <div key={attacker?.ip ?? Math.random().toString()} className="space-y-1.5">
                     <div className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2 text-slate-200">
                         <span className="text-[11px] text-slate-400">#{index + 1}</span>
@@ -880,7 +912,7 @@ export function HoneypotDashboard() {
                 const widthPct = Math.round((item.count / topPortMax) * 100);
                 const gradient = getRankBarGradient(index);
                 return (
-                  <div key={item.port} className="space-y-1.5">
+                  <div key={`${item.port}-${index}`} className="space-y-1.5">
                     <div className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2 text-slate-300">
                         <span className="text-[11px] text-slate-500">#{index + 1}</span>
@@ -973,37 +1005,39 @@ export function HoneypotDashboard() {
               ) : null}
             </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {originHeat.map((item) => {
-                const intensity = Math.max(18, Math.round((item.count / heatMax) * 100));
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+  {/* index ditambahkan sebagai parameter kedua di sini */}
+  {originHeat.map((item, index) => {
+    const intensity = Math.max(18, Math.round((item.count / heatMax) * 100));
 
-                return (
-                  <div
-                    key={item.countryCode}
-                    className="rounded-xl border border-slate-700/80 bg-slate-950/55 p-3"
-                  >
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-semibold text-slate-100">{item.countryName}</span>
-                      <span className="text-slate-400">{item.count}</span>
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {item.countryCode} · {item.uniqueIps} unique source IPs
-                    </p>
-                    <div className="mt-3 h-2 rounded-full bg-slate-800">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-amber-400 to-red-500"
-                        style={{ width: `${intensity}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-              {!originHeat.length && !isLoading ? (
-                <div className="col-span-full rounded-xl border border-dashed border-slate-700 px-4 py-8 text-center text-sm text-slate-400">
-                  No geographic data for the current filters.
-                </div>
-              ) : null}
-            </div>
+    return (
+      <div
+        // key sekarang unik dengan menggabungkan kode negara dan index
+        key={`${item.countryCode}-${index}`}
+        className="rounded-xl border border-slate-700/80 bg-slate-950/55 p-3"
+      >
+        <div className="flex items-center justify-between text-sm">
+          <span className="font-semibold text-slate-100">{item.countryName}</span>
+          <span className="text-slate-400">{item.count}</span>
+        </div>
+        <p className="mt-1 text-xs text-slate-500">
+          {item.countryCode} · {item.uniqueIps} unique source IPs
+        </p>
+        <div className="mt-3 h-2 rounded-full bg-slate-800">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-amber-400 to-red-500"
+            style={{ width: `${intensity}%` }}
+          />
+        </div>
+      </div>
+    );
+  })}
+  {!originHeat.length && !isLoading ? (
+    <div className="col-span-full rounded-xl border border-dashed border-slate-700 px-4 py-8 text-center text-sm text-slate-400">
+      No geographic data for the current filters.
+    </div>
+  ) : null}
+</div>
           </div>
 
           <div className="rounded-2xl border border-sky-500/20 bg-[#0b1630]/85 p-5 shadow-[inset_0_1px_0_rgba(148,163,184,0.08)]">
@@ -1063,36 +1097,40 @@ export function HoneypotDashboard() {
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-            {filteredEvents.slice(0, 5).map((event) => (
-              <article
-                key={event.id}
-                className="rounded-xl border border-slate-700/80 bg-slate-950/55 p-4"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-mono text-sm text-slate-100">{event.srcIp}</span>
-                  <span
-                    className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${severityClass(
-                      event.severity,
-                    )}`}
-                  >
-                    {event.severity.toUpperCase()}
-                  </span>
-                </div>
-                <p className="mt-2 text-sm text-slate-300">
-                  {event.action} via {event.service} on port {event.port}
-                </p>
-                <p className="mt-3 text-xs text-slate-500">
-                  {event.country} · {event.protocol} · {timeAgo(event.timestamp)}
-                </p>
-              </article>
-            ))}
-            {!filteredEvents.length && !isLoading ? (
-              <div className="rounded-xl border border-dashed border-slate-700 px-4 py-8 text-center text-sm text-slate-400 md:col-span-2 xl:col-span-5">
-                No alerts match the current filters.
-              </div>
-            ) : null}
-          </div>
+<div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+  {/* 1. Tambahkan 'index' sebagai parameter kedua di map */}
+  {filteredEvents.slice(0, 5).map((event, index) => (
+    <article
+      // 2. Buat key unik dengan menggabungkan ID dan Index
+      // Jika event.id tidak ada, kita pakai index saja sebagai fallback
+      key={event.id ? `${event.id}-${index}` : index}
+      className="rounded-xl border border-slate-700/80 bg-slate-950/55 p-4"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-mono text-sm text-slate-100">{event.srcIp}</span>
+        <span
+          className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${severityClass(
+            event.severity,
+          )}`}
+        >
+          {(event.severity || "unknown").toUpperCase()}
+        </span>
+      </div>
+      <p className="mt-2 text-sm text-slate-300">
+        {event.action} via {event.service} on port {event.port}
+      </p>
+      <p className="mt-3 text-xs text-slate-500">
+        {event.country} · {event.protocol} · {timeAgo(event.timestamp)}
+      </p>
+    </article>
+  ))}
+  
+  {!filteredEvents.length && !isLoading ? (
+    <div className="rounded-xl border border-dashed border-slate-700 px-4 py-8 text-center text-sm text-slate-400 md:col-span-2 xl:col-span-5">
+      No alerts match the current filters.
+    </div>
+  ) : null}
+</div>
         </section>
 
         <section className="rounded-2xl border border-sky-500/20 bg-[#0b1630]/85 p-5 shadow-[inset_0_1px_0_rgba(148,163,184,0.08)]">
@@ -1173,7 +1211,11 @@ export function HoneypotDashboard() {
                 {intelSummary.topServices.map((item, index) => {
                   const width = Math.round((item.count / Math.max(1, intelSummary.topServices[0]?.count ?? 1)) * 100);
                   return (
-                    <div key={item.service} className="space-y-1">
+                    <div 
+      // 2. Gabungkan service name dengan index untuk kunci yang 100% unik
+      key={`${item.service}-${index}`} 
+      className="space-y-1"
+    >
                       <div className="flex items-center justify-between text-xs text-slate-300">
                         <span className="truncate pr-2">
                           #{index + 1} {item.service}
@@ -1215,11 +1257,12 @@ export function HoneypotDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {filteredEvents.slice(0, 120).map((event) => (
-                  <tr key={event.id} className="bg-slate-950/60">
-                    <td className="rounded-l-lg px-3 py-2 text-slate-300">
-                      {new Date(event.timestamp).toLocaleTimeString()}
-                    </td>
+                {filteredEvents
+  .filter((event) => event && event.id) // Filter dulu: pastikan event ada ID-nya!
+  .slice(0, 120)
+  .map((event, index) => (
+    <tr key={event.id || index} className="bg-slate-950/60">
+      <td>{event.timestamp ? new Date(event.timestamp).toLocaleString() : 'N/A'}</td>
                     <td className="px-3 py-2 font-mono text-slate-200">{event.srcIp}</td>
                     <td className="px-3 py-2 text-slate-300">{event.country}</td>
                     <td className="px-3 py-2 text-slate-200">{event.protocol}</td>
@@ -1232,7 +1275,7 @@ export function HoneypotDashboard() {
                           event.severity,
                         )}`}
                       >
-                        {event.severity.toUpperCase()}
+                        { (event.severity || 'unknown').toUpperCase() }
                       </span>
                     </td>
                   </tr>
