@@ -111,7 +111,6 @@ function getInitialFilter(
 }
 
 function getCountryName(code: string | undefined) {
-  // Tambahkan baris ini untuk menangani data kosong/undefined
   if (!code) return "Unknown"; 
 
   // Sekarang aman untuk mengecek .length
@@ -229,27 +228,27 @@ const [events, setEvents] = useState<HoneypotEvent[]>([]); // <-- Tambahin []
   const [threatTick, setThreatTick] = useState<number>(() => Date.now());
 
   useEffect(() => {
-  // Fungsi buat fetch data
+  //function to fetch data
   const fetchData = async () => {
     try {
       const response = await fetch("/api/honeypot/events");
       const data = await response.json();
       setEvents(data.events); // Update state dengan data baru
     } catch (error) {
-      console.error("Gagal update data:", error);
+      console.error("Failed to update data:", error);
     }
     
   };
 
-  // 1. Panggil sekali pas awal
+  //call once
   fetchData();
 
-  // 2. Pasang interval supaya dia jalan terus setiap REFRESH_MS
+  //put interval so it runs every REFRESH_MS
   const interval = setInterval(fetchData, REFRESH_MS);
 
-  // 3. Bersihkan interval pas komponen di-unmount (biar gak error memory leak)
+  //clean interval when unmounting component (avoid error memory leak) 
   return () => clearInterval(interval);
-}, []); // Dependency array kosong biar cuma jalan sekali pas pertama load
+}, []); //empty dependency array so it runs once when first load
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -279,7 +278,7 @@ const [events, setEvents] = useState<HoneypotEvent[]>([]); // <-- Tambahin []
           setMapFeatures(payload.features);
         }
       } catch {
-        // Keep dashboard functional if map download is blocked.
+        //keep dashboard functional if map download is blocked.
       }
     };
 
@@ -460,7 +459,7 @@ const [events, setEvents] = useState<HoneypotEvent[]>([]); // <-- Tambahin []
           setEvents(payload.events);
           setLastUpdate(payload.generatedAt);
         } catch {
-          // Keep the dashboard usable even if the stream is briefly unavailable.
+          //keep the dashboard usable even if the stream is briefly unavailable.
         }
       }, REFRESH_MS);
     };
@@ -1006,13 +1005,13 @@ const [events, setEvents] = useState<HoneypotEvent[]>([]); // <-- Tambahin []
             </div>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-  {/* index ditambahkan sebagai parameter kedua di sini */}
+  {/* index added as second parameter here */}
   {originHeat.map((item, index) => {
     const intensity = Math.max(18, Math.round((item.count / heatMax) * 100));
 
     return (
       <div
-        // key sekarang unik dengan menggabungkan kode negara dan index
+        //unique key now with combining country code and index
         key={`${item.countryCode}-${index}`}
         className="rounded-xl border border-slate-700/80 bg-slate-950/55 p-3"
       >
@@ -1098,11 +1097,11 @@ const [events, setEvents] = useState<HoneypotEvent[]>([]); // <-- Tambahin []
           </div>
 
 <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-  {/* 1. Tambahkan 'index' sebagai parameter kedua di map */}
+  {/* add 'index' as second parameter in map */}
   {filteredEvents.slice(0, 5).map((event, index) => (
     <article
-      // 2. Buat key unik dengan menggabungkan ID dan Index
-      // Jika event.id tidak ada, kita pakai index saja sebagai fallback
+      //create unique key by combining ID and Index
+      //if event.id is not available, use index as fallback
       key={event.id ? `${event.id}-${index}` : index}
       className="rounded-xl border border-slate-700/80 bg-slate-950/55 p-4"
     >
@@ -1212,7 +1211,7 @@ const [events, setEvents] = useState<HoneypotEvent[]>([]); // <-- Tambahin []
                   const width = Math.round((item.count / Math.max(1, intelSummary.topServices[0]?.count ?? 1)) * 100);
                   return (
                     <div 
-      // 2. Gabungkan service name dengan index untuk kunci yang 100% unik
+      //combine service name with index for a 100% unique key
       key={`${item.service}-${index}`} 
       className="space-y-1"
     >
@@ -1258,7 +1257,7 @@ const [events, setEvents] = useState<HoneypotEvent[]>([]); // <-- Tambahin []
               </thead>
               <tbody>
                 {filteredEvents
-  .filter((event) => event && event.id) // Filter dulu: pastikan event ada ID-nya!
+  .filter((event) => event && event.id) //filter first: make sure event has an ID!
   .slice(0, 120)
   .map((event, index) => (
     <tr key={event.id || index} className="bg-slate-950/60">

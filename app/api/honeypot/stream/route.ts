@@ -11,12 +11,12 @@ export async function GET(request: Request) {
   const db = client.db("honeypot_db");
   const collection = db.collection("traffic");
   
-  // 1. Pindahkan deklarasi heartbeat ke lingkup yang bisa diakses cancel()
+  //declare heartbeat here so it's accessible inside the cleanup function and the start method of the stream 
   let heartbeat: ReturnType<typeof setInterval> | null = null;
   const changeStream = collection.watch();
 
   const cleanup = () => {
-    if (heartbeat) clearInterval(heartbeat); // Bersihkan interval
+    if (heartbeat) clearInterval(heartbeat); //stop the heartbeat timer
     client.close();
     changeStream.close();
   };
@@ -36,12 +36,12 @@ export async function GET(request: Request) {
           try {
             controller.enqueue(toEventBlock("event", { event: change.fullDocument }));
           } catch (e) {
-            console.log("Stream sudah tertutup, tidak bisa kirim data.");
+            console.log("Stream already closed, cannot send data.");
           }
         }
       });
 
-      // 2. Assign ke variabel heartbeat yang di atas
+      //assign to the heartbeat variable declared above
       heartbeat = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(`event: ping\ndata: ${Date.now()}\n\n`));

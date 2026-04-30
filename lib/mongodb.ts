@@ -1,7 +1,7 @@
 import { MongoClient } from "mongodb";
 
 if (!process.env.MONGODB_URI) {
-  throw new Error('Invalid/Missing environment variable: "mongodb+srv://orleanwesley_db_user:wesley.966@cluster0.ztwkyfi.mongodb.net/honeypot_db');
+  throw new Error('Invalid/Missing environment variable: MONGODB_URI');
 }
 
 const uri = process.env.MONGODB_URI;
@@ -11,14 +11,14 @@ let client: MongoClient;
 let clientPromise: Promise<MongoClient>;
 
 if (process.env.NODE_ENV === "development") {
-  // Simpan instance di global biar gak mati pas Next.js Hot Reload
+  //Reuse the existing connection across hot reloads in development
   if (!(global as any)._mongoClientPromise) {
     client = new MongoClient(uri, options);
     (global as any)._mongoClientPromise = client.connect();
   }
   clientPromise = (global as any)._mongoClientPromise;
 } else {
-  // Untuk Production
+  //in production.. always create a fresh connection
   client = new MongoClient(uri, options);
   clientPromise = client.connect();
 }
